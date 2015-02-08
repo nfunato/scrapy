@@ -94,14 +94,14 @@ following methods:
 
         :param response: the response which generated this output from the
           spider
-        :type response: class:`~scrapy.http.Response` object
+        :type response: :class:`~scrapy.http.Response` object
 
         :param result: the result returned by the spider
         :type result: an iterable of :class:`~scrapy.http.Request` or
           :class:`~scrapy.item.Item` objects
 
         :param spider: the spider whose result is being processed
-        :type spider: :class:`~scrapy.item.Spider` object
+        :type spider: :class:`~scrapy.spider.Spider` object
 
 
     .. method:: process_spider_exception(response, exception, spider)
@@ -156,7 +156,7 @@ following methods:
         :type start_requests: an iterable of :class:`~scrapy.http.Request`
 
         :param spider: the spider to whom the start requests belong
-        :type spider: :class:`~scrapy.item.Spider` object
+        :type spider: :class:`~scrapy.spider.Spider` object
 
 
 .. _Exception: http://docs.python.org/library/exceptions.html#exceptions.Exception
