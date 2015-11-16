@@ -6,10 +6,10 @@ See documentation in docs/topics/shell.rst
 
 from threading import Thread
 
-from scrapy.command import ScrapyCommand
+from scrapy.commands import ScrapyCommand
 from scrapy.shell import Shell
 from scrapy.http import Request
-from scrapy import log
+from scrapy.utils.url import add_http_if_no_scheme
 from scrapy.utils.spider import spidercls_for_request, DefaultSpider
 
 
@@ -42,19 +42,20 @@ class Command(ScrapyCommand):
 
     def run(self, args, opts):
         url = args[0] if args else None
-        spiders = self.crawler_process.spiders
+        if url:
+            url = add_http_if_no_scheme(url)
+        spider_loader = self.crawler_process.spider_loader
 
         spidercls = DefaultSpider
         if opts.spider:
-            spidercls = spiders.load(opts.spider)
+            spidercls = spider_loader.load(opts.spider)
         elif url:
-            spidercls = spidercls_for_request(spiders, Request(url),
+            spidercls = spidercls_for_request(spider_loader, Request(url),
                                               spidercls, log_multiple=True)
 
         # The crawler is created this way since the Shell manually handles the
         # crawling engine, so the set up in the crawl method won't work
         crawler = self.crawler_process._create_crawler(spidercls)
-        self.crawler_process._setup_crawler_logging(crawler)
         # The Shell class needs a persistent engine in the crawler
         crawler.engine = crawler._create_engine()
         crawler.engine.start()

@@ -19,19 +19,22 @@ from twisted.web import server, static, util
 from twisted.trial import unittest
 
 from scrapy import signals
+from scrapy.core.engine import ExecutionEngine
 from scrapy.utils.test import get_crawler
-from scrapy.xlib.pydispatch import dispatcher
+from pydispatch import dispatcher
 from tests import tests_datadir
-from scrapy.spider import Spider
+from scrapy.spiders import Spider
 from scrapy.item import Item, Field
-from scrapy.contrib.linkextractors import LinkExtractor
+from scrapy.linkextractors import LinkExtractor
 from scrapy.http import Request
 from scrapy.utils.signal import disconnect_all
+
 
 class TestItem(Item):
     name = Field()
     url = Field()
     price = Field()
+
 
 class TestSpider(Spider):
     name = "scrapytest.org"
@@ -41,6 +44,8 @@ class TestSpider(Spider):
     name_re = re.compile("<h1>(.*?)</h1>", re.M)
     price_re = re.compile(">Price: \$(.*?)<", re.M)
 
+    item_cls = TestItem
+
     def parse(self, response):
         xlink = LinkExtractor()
         itemre = re.compile(self.itemurl_re)
@@ -49,7 +54,7 @@ class TestSpider(Spider):
                 yield Request(url=link.url, callback=self.parse_item)
 
     def parse_item(self, response):
-        item = TestItem()
+        item = self.item_cls()
         m = self.name_re.search(response.body)
         if m:
             item['name'] = m.group(1)
@@ -63,6 +68,10 @@ class TestSpider(Spider):
 class TestDupeFilterSpider(TestSpider):
     def make_requests_from_url(self, url):
         return Request(url)  # dont_filter=False
+
+
+class DictItemsSpider(TestSpider):
+    item_cls = dict
 
 
 def start_test_site(debug=False):
@@ -81,15 +90,14 @@ def start_test_site(debug=False):
 class CrawlerRun(object):
     """A class to run the crawler and keep track of events occurred"""
 
-    def __init__(self, with_dupefilter=False):
+    def __init__(self, spider_class):
         self.spider = None
         self.respplug = []
         self.reqplug = []
         self.reqdropped = []
         self.itemresp = []
         self.signals_catched = {}
-        self.spider_class = TestSpider if not with_dupefilter else \
-            TestDupeFilterSpider
+        self.spider_class = spider_class
 
     def run(self):
         self.port = start_test_site()
@@ -152,14 +160,17 @@ class EngineTest(unittest.TestCase):
 
     @defer.inlineCallbacks
     def test_crawler(self):
-        self.run = CrawlerRun()
-        yield self.run.run()
-        self._assert_visited_urls()
-        self._assert_scheduled_requests(urls_to_visit=8)
-        self._assert_downloaded_responses()
-        self._assert_scraped_items()
-        self._assert_signals_catched()
-        self.run = CrawlerRun(with_dupefilter=True)
+
+        for spider in TestSpider, DictItemsSpider:
+            self.run = CrawlerRun(spider)
+            yield self.run.run()
+            self._assert_visited_urls()
+            self._assert_scheduled_requests(urls_to_visit=8)
+            self._assert_downloaded_responses()
+            self._assert_scraped_items()
+            self._assert_signals_catched()
+
+        self.run = CrawlerRun(TestDupeFilterSpider)
         yield self.run.run()
         self._assert_scheduled_requests(urls_to_visit=7)
         self._assert_dropped_requests()
@@ -223,6 +234,29 @@ class EngineTest(unittest.TestCase):
         self.run.signals_catched[signals.spider_closed].pop('spider_stats', None) # XXX: remove for scrapy 0.17
         self.assertEqual({'spider': self.run.spider, 'reason': 'finished'},
                          self.run.signals_catched[signals.spider_closed])
+
+    @defer.inlineCallbacks
+    def test_close_downloader(self):
+        e = ExecutionEngine(get_crawler(TestSpider), lambda: None)
+        yield e.close()
+
+    @defer.inlineCallbacks
+    def test_close_spiders_downloader(self):
+        e = ExecutionEngine(get_crawler(TestSpider), lambda: None)
+        yield e.open_spider(TestSpider(), [])
+        self.assertEqual(len(e.open_spiders), 1)
+        yield e.close()
+        self.assertEqual(len(e.open_spiders), 0)
+
+    @defer.inlineCallbacks
+    def test_close_engine_spiders_downloader(self):
+        e = ExecutionEngine(get_crawler(TestSpider), lambda: None)
+        yield e.open_spider(TestSpider(), [])
+        e.start()
+        self.assertTrue(e.running)
+        yield e.close()
+        self.assertFalse(e.running)
+        self.assertEqual(len(e.open_spiders), 0)
 
 
 if __name__ == "__main__":

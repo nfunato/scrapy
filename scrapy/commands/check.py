@@ -4,7 +4,7 @@ import sys
 from collections import defaultdict
 from unittest import TextTestRunner, TextTestResult as _TextTestResult
 
-from scrapy.command import ScrapyCommand
+from scrapy.commands import ScrapyCommand
 from scrapy.contracts import ContractsManager
 from scrapy.utils.misc import load_object
 from scrapy.utils.conf import build_component_list
@@ -58,21 +58,18 @@ class Command(ScrapyCommand):
 
     def run(self, args, opts):
         # load contracts
-        contracts = build_component_list(
-            self.settings['SPIDER_CONTRACTS_BASE'],
-            self.settings['SPIDER_CONTRACTS'],
-        )
-        conman = ContractsManager([load_object(c) for c in contracts])
+        contracts = build_component_list(self.settings.getwithbase('SPIDER_CONTRACTS'))
+        conman = ContractsManager(load_object(c) for c in contracts)
         runner = TextTestRunner(verbosity=2 if opts.verbose else 1)
         result = TextTestResult(runner.stream, runner.descriptions, runner.verbosity)
 
         # contract requests
         contract_reqs = defaultdict(list)
 
-        spiders = self.crawler_process.spiders
+        spider_loader = self.crawler_process.spider_loader
 
-        for spidername in args or spiders.list():
-            spidercls = spiders.load(spidername)
+        for spidername in args or spider_loader.list():
+            spidercls = spider_loader.load(spidername)
             spidercls.start_requests = lambda s: conman.from_spider(s, result)
 
             tested_methods = conman.tested_methods_from_spidercls(spidercls)

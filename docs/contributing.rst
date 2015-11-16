@@ -146,14 +146,29 @@ tests requires `tox`_.
 Running tests
 -------------
 
+Make sure you have a recent enough `tox`_ installation:
+
+    ``tox --version``
+
+If your version is older than 1.7.0, please update it first:
+
+    ``pip install -U tox``
+
 To run all tests go to the root directory of Scrapy source code and run:
 
     ``tox``
 
-To run a specific test (say ``tests/test_contrib_loader.py``) use:
+To run a specific test (say ``tests/test_loader.py``) use:
 
-    ``tox -- tests/test_contrib_loader.py``
+    ``tox -- tests/test_loader.py``
 
+To see coverage report install `coverage`_ (``pip install coverage``) and run:
+
+    ``coverage report``
+
+see output of ``coverage --help`` for more options like html or xml report.
+
+.. _coverage: https://pypi.python.org/pypi/coverage
 
 Writing tests
 -------------
@@ -166,17 +181,17 @@ Scrapy uses unit-tests, which are located in the `tests/`_ directory.
 Their module name typically resembles the full path of the module they're
 testing. For example, the item loaders code is in::
 
-    scrapy.contrib.loader
+    scrapy.loader
 
 And their unit-tests are in::
 
-    tests/test_contrib_loader.py
+    tests/test_loader.py
 
 .. _issue tracker: https://github.com/scrapy/scrapy/issues
-.. _scrapy-users: http://groups.google.com/group/scrapy-users
+.. _scrapy-users: https://groups.google.com/forum/#!forum/scrapy-users
 .. _Twisted unit-testing framework: http://twistedmatrix.com/documents/current/core/development/policy/test-standard.html
 .. _AUTHORS: https://github.com/scrapy/scrapy/blob/master/AUTHORS
 .. _tests/: https://github.com/scrapy/scrapy/tree/master/tests
 .. _open issues: https://github.com/scrapy/scrapy/issues
-.. _pull request: http://help.github.com/send-pull-requests/
+.. _pull request: https://help.github.com/send-pull-requests/
 .. _tox: https://pypi.python.org/pypi/tox

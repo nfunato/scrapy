@@ -26,11 +26,10 @@ def get_crawler(spidercls=None, settings_dict=None):
     priority.
     """
     from scrapy.crawler import CrawlerRunner
-    from scrapy.settings import Settings
-    from scrapy.spider import Spider
+    from scrapy.spiders import Spider
 
-    runner = CrawlerRunner(Settings(settings_dict))
-    return runner._create_crawler(spidercls or Spider)
+    runner = CrawlerRunner(settings_dict)
+    return runner.create_crawler(spidercls or Spider)
 
 def get_pythonpath():
     """Return a PYTHONPATH suitable to use in processes so that they find this
@@ -45,19 +44,6 @@ def get_testenv():
     env = os.environ.copy()
     env['PYTHONPATH'] = get_pythonpath()
     return env
-
-def get_testlog():
-    """Get Scrapy log of current test, ignoring the rest"""
-    with open("test.log", "rb") as fp:
-        loglines = fp.readlines()
-
-    thistest = []
-    for line in loglines[::-1]:
-        thistest.append(line)
-        if "[-] -->" in line:
-            break
-    return "".join(thistest[::-1])
-
 
 def assert_samelines(testcase, text1, text2, msg=None):
     """Asserts text1 and text2 have the same lines, ignoring differences in

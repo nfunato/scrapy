@@ -24,7 +24,7 @@ from scrapy.core.downloader.handlers.http11 import HTTP11DownloadHandler
 from scrapy.core.downloader.handlers.s3 import S3DownloadHandler
 from scrapy.core.downloader.handlers.ftp import FTPDownloadHandler
 
-from scrapy.spider import Spider
+from scrapy.spiders import Spider
 from scrapy.http import Request
 from scrapy.settings import Settings
 from scrapy import optional_features
@@ -52,6 +52,9 @@ class LoadTestCase(unittest.TestCase):
         handlers = {'scheme': 'tests.test_downloader_handlers.DummyDH'}
         crawler = get_crawler(settings_dict={'DOWNLOAD_HANDLERS': handlers})
         dh = DownloadHandlers(crawler)
+        self.assertIn('scheme', dh._schemes)
+        for scheme in handlers: # force load handlers
+            dh._get_handler(scheme)
         self.assertIn('scheme', dh._handlers)
         self.assertNotIn('scheme', dh._notconfigured)
 
@@ -59,6 +62,9 @@ class LoadTestCase(unittest.TestCase):
         handlers = {'scheme': 'tests.test_downloader_handlers.OffDH'}
         crawler = get_crawler(settings_dict={'DOWNLOAD_HANDLERS': handlers})
         dh = DownloadHandlers(crawler)
+        self.assertIn('scheme', dh._schemes)
+        for scheme in handlers: # force load handlers
+            dh._get_handler(scheme)
         self.assertNotIn('scheme', dh._handlers)
         self.assertIn('scheme', dh._notconfigured)
 
@@ -66,8 +72,11 @@ class LoadTestCase(unittest.TestCase):
         handlers = {'scheme': None}
         crawler = get_crawler(settings_dict={'DOWNLOAD_HANDLERS': handlers})
         dh = DownloadHandlers(crawler)
+        self.assertNotIn('scheme', dh._schemes)
+        for scheme in handlers: # force load handlers
+            dh._get_handler(scheme)
         self.assertNotIn('scheme', dh._handlers)
-        self.assertNotIn('scheme', dh._notconfigured)
+        self.assertIn('scheme', dh._notconfigured)
 
 
 class FileTestCase(unittest.TestCase):
@@ -395,7 +404,13 @@ class HttpDownloadHandlerMock(object):
         return request
 
 class S3TestCase(unittest.TestCase):
-    skip = 'boto' not in optional_features and 'missing boto library'
+    download_handler_cls = S3DownloadHandler
+    try:
+        # can't instance without settings, but ignore that
+        download_handler_cls({})
+    except NotConfigured:
+        skip = 'missing boto library'
+    except KeyError: pass
 
     # test use same example keys than amazon developer guide
     # http://s3.amazonaws.com/awsdocs/S3/20060301/s3-dg-20060301.pdf
@@ -511,7 +526,9 @@ class FTPTestCase(unittest.TestCase):
         os.mkdir(self.directory)
         userdir = os.path.join(self.directory, self.username)
         os.mkdir(userdir)
-        FilePath(userdir).child('file.txt').setContent("I have the power!")
+        fp = FilePath(userdir)
+        fp.child('file.txt').setContent("I have the power!")
+        fp.child('file with spaces.txt').setContent("Moooooooooo power!")
 
         # setup server
         realm = FTPRealm(anonymousRoot=self.directory, userHome=self.directory)
@@ -545,6 +562,19 @@ class FTPTestCase(unittest.TestCase):
             self.assertEqual(r.status, 200)
             self.assertEqual(r.body, 'I have the power!')
             self.assertEqual(r.headers, {'Local Filename': [''], 'Size': ['17']})
+        return self._add_test_callbacks(d, _test)
+
+    def test_ftp_download_path_with_spaces(self):
+        request = Request(
+            url="ftp://127.0.0.1:%s/file with spaces.txt" % self.portNum,
+            meta={"ftp_user": self.username, "ftp_password": self.password}
+        )
+        d = self.download_handler.download_request(request, None)
+
+        def _test(r):
+            self.assertEqual(r.status, 200)
+            self.assertEqual(r.body, 'Moooooooooo power!')
+            self.assertEqual(r.headers, {'Local Filename': [''], 'Size': ['18']})
         return self._add_test_callbacks(d, _test)
 
     def test_ftp_download_notexist(self):

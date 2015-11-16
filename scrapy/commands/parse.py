@@ -1,13 +1,18 @@
 from __future__ import print_function
+import logging
+
 from w3lib.url import is_url
-from scrapy.command import ScrapyCommand
+
+from scrapy.commands import ScrapyCommand
 from scrapy.http import Request
 from scrapy.item import BaseItem
 from scrapy.utils import display
 from scrapy.utils.conf import arglist_to_dict
 from scrapy.utils.spider import iterate_spider_output, spidercls_for_request
 from scrapy.exceptions import UsageError
-from scrapy import log
+
+logger = logging.getLogger(__name__)
+
 
 class Command(ScrapyCommand):
 
@@ -27,33 +32,34 @@ class Command(ScrapyCommand):
 
     def add_options(self, parser):
         ScrapyCommand.add_options(self, parser)
-        parser.add_option("--spider", dest="spider", default=None, \
+        parser.add_option("--spider", dest="spider", default=None,
             help="use this spider without looking for one")
-        parser.add_option("-a", dest="spargs", action="append", default=[], metavar="NAME=VALUE", \
+        parser.add_option("-a", dest="spargs", action="append", default=[], metavar="NAME=VALUE",
             help="set spider argument (may be repeated)")
-        parser.add_option("--pipelines", action="store_true", \
+        parser.add_option("--pipelines", action="store_true",
             help="process items through pipelines")
-        parser.add_option("--nolinks", dest="nolinks", action="store_true", \
+        parser.add_option("--nolinks", dest="nolinks", action="store_true",
             help="don't show links to follow (extracted requests)")
-        parser.add_option("--noitems", dest="noitems", action="store_true", \
+        parser.add_option("--noitems", dest="noitems", action="store_true",
             help="don't show scraped items")
-        parser.add_option("--nocolour", dest="nocolour", action="store_true", \
+        parser.add_option("--nocolour", dest="nocolour", action="store_true",
             help="avoid using pygments to colorize the output")
-        parser.add_option("-r", "--rules", dest="rules", action="store_true", \
+        parser.add_option("-r", "--rules", dest="rules", action="store_true",
             help="use CrawlSpider rules to discover the callback")
-        parser.add_option("-c", "--callback", dest="callback", \
+        parser.add_option("-c", "--callback", dest="callback",
             help="use this callback for parsing, instead looking for a callback")
-        parser.add_option("-d", "--depth", dest="depth", type="int", default=1, \
+        parser.add_option("-d", "--depth", dest="depth", type="int", default=1,
             help="maximum depth for parsing requests [default: %default]")
-        parser.add_option("-v", "--verbose", dest="verbose", action="store_true", \
+        parser.add_option("-v", "--verbose", dest="verbose", action="store_true",
             help="print each depth level one by one")
 
 
     @property
     def max_level(self):
-        levels = self.items.keys() + self.requests.keys()
-        if levels: return max(levels)
-        else: return 0
+        levels = list(self.items.keys()) + list(self.requests.keys())
+        if not levels:
+            return 0
+        return max(levels)
 
     def add_items(self, lvl, new_items):
         old_items = self.items.get(lvl, [])
@@ -74,7 +80,7 @@ class Command(ScrapyCommand):
 
     def print_requests(self, lvl=None, colour=True):
         if lvl is None:
-            levels = self.requests.keys()
+            levels = list(self.requests.keys())
             if levels:
                 requests = self.requests[max(levels)]
             else:
@@ -89,7 +95,7 @@ class Command(ScrapyCommand):
         colour = not opts.nocolour
 
         if opts.verbose:
-            for level in xrange(1, self.max_level+1):
+            for level in range(1, self.max_level+1):
                 print('\n>>> DEPTH LEVEL: %s <<<' % level)
                 if not opts.noitems:
                     self.print_items(level, colour)
@@ -102,12 +108,11 @@ class Command(ScrapyCommand):
             if not opts.nolinks:
                 self.print_requests(colour=colour)
 
-
     def run_callback(self, response, cb):
         items, requests = [], []
 
         for x in iterate_spider_output(cb(response)):
-            if isinstance(x, BaseItem):
+            if isinstance(x, (BaseItem, dict)):
                 items.append(x)
             elif isinstance(x, Request):
                 requests.append(x)
@@ -119,28 +124,27 @@ class Command(ScrapyCommand):
                 if rule.link_extractor.matches(response.url) and rule.callback:
                     return rule.callback
         else:
-            log.msg(format='No CrawlSpider rules found in spider %(spider)r, '
-                           'please specify a callback to use for parsing',
-                    level=log.ERROR, spider=spider.name)
+            logger.error('No CrawlSpider rules found in spider %(spider)r, '
+                         'please specify a callback to use for parsing',
+                         {'spider': spider.name})
 
     def set_spidercls(self, url, opts):
-        spiders = self.crawler_process.spiders
+        spider_loader = self.crawler_process.spider_loader
         if opts.spider:
             try:
-                self.spidercls = spiders.load(opts.spider)
+                self.spidercls = spider_loader.load(opts.spider)
             except KeyError:
-                log.msg(format='Unable to find spider: %(spider)s',
-                        level=log.ERROR, spider=opts.spider)
+                logger.error('Unable to find spider: %(spider)s',
+                             {'spider': opts.spider})
         else:
-            self.spidercls = spidercls_for_request(spiders, Request(url))
+            self.spidercls = spidercls_for_request(spider_loader, Request(url))
             if not self.spidercls:
-                log.msg(format='Unable to find spider for: %(url)s',
-                        level=log.ERROR, url=url)
+                logger.error('Unable to find spider for: %(url)s',
+                             {'url': url})
 
         request = Request(url, opts.callback)
         _start_requests = lambda s: [self.prepare_request(s, request, opts)]
         self.spidercls.start_requests = _start_requests
-
 
     def start_parsing(self, url, opts):
         self.crawler_process.crawl(self.spidercls, **opts.spargs)
@@ -148,8 +152,8 @@ class Command(ScrapyCommand):
         self.crawler_process.start()
 
         if not self.first_response:
-            log.msg(format='No response downloaded for: %(url)s',
-                    level=log.ERROR, url=url)
+            logger.error('No response downloaded for: %(url)s',
+                         {'url': url})
 
     def prepare_request(self, spider, request, opts):
         def callback(response):
@@ -170,8 +174,8 @@ class Command(ScrapyCommand):
                 if callable(cb_method):
                     cb = cb_method
                 else:
-                    log.msg(format='Cannot find callback %(callback)r in spider: %(spider)s',
-                            callback=callback, spider=spider.name, level=log.ERROR)
+                    logger.error('Cannot find callback %(callback)r in spider: %(spider)s',
+                                 {'callback': callback, 'spider': spider.name})
                     return
 
             # parse items and requests
